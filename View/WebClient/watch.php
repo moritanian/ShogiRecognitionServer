@@ -2,19 +2,13 @@
 <html>
 <head>
 <meta charset="utf-8">
-<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 
+<script src="<?= $v->app_pos?>/Plugins/jq.js"></script>
+<script src="<?= $v->app_pos?>/Scripts/util.js"></script>
 <script src="<?= $v->app_pos?>/Plugins/Three/three.min.js"></script>
 <script src="<?= $v->app_pos?>/Plugins/Three/OrbitControls.js"></script> 
 
-<script>
-  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
-  ga('create', 'UA-58056432-2', 'auto');
-  ga('send', 'pageview');
-</script>
+
 <title> watch </title>
 </head>
 
@@ -22,26 +16,36 @@
 
  $(function(){
     "use strict";
-
     var compassdir = {x:0, y:0, z:0};
     if (window.DeviceOrientationEvent) {
         // Listen for the deviceorientation event and handle the raw data
         window.addEventListener('deviceorientation', function(eventData) {
-        if(event.webkitCompassHeading) {
-            // Apple works only with this, alpha doesn't work
-            compassdir = event.webkitCompassHeading;  
-            $(".com_value").text("compass heading" + compassdir);
+            if(event.webkitCompassHeading) {
+                // Apple works only with this, alpha doesn't work
+                compassdir = event.webkitCompassHeading;  
+                $(".com_value").text("compass heading" + compassdir);
             }
             else
             { 
                 var k = 3.1415 * 2/360.0;
-                compassdir.y =- event.alpha * k;
+                /*compassdir.y =- event.alpha * k;
                 compassdir.x =  event.beta * k;
-                compassdir.z = -event.gamma * k;
+                compassdir.z = -event.gamma * k; */
+                compassdir.y = event.gamma * k;//event.alpha * k + 1.5;
+                compassdir.x = -1.3 +event.beta * k;
+                compassdir.z = 0.0;//event.gamma * k;
                 //$(".com_value").text("else \n" + Math.round(compassdir.x) + "   " + Math.round(compassdir.y) + "   " + Math.round(compassdir.z));
             }
         });
     }
+
+    var is_orbit_control = false;
+    var is_use_compass = false;
+    if(_ua.Tablet || _ua.Mobile){
+        is_use_compass = true;
+        is_orbit_control = true;
+    }
+   
 
     var game_board = {
         HU : 1,
@@ -69,6 +73,8 @@
         teban : 1,
         game_id : <?= $v->game_id?>,
 
+        use_time: [0,0],
+
         board : [],
         board_mesh : [],
         _catch_first : [],
@@ -76,7 +82,13 @@
         
         _piece_str : ["歩", "香", "桂", "銀", "金", "角", "飛", "王", "と", "杏", "圭", "全", "馬", "竜"],
         _piece_colors : [0xd0d0d0, 0xd03333, 0xc07040, 0xc0c0c0, 0xd0d044, 0x3322d0, 0x44a0f0, 0xffffff, 0xd03344, 0xd03344, 0xd03344, 0xd03344, 0xd03344, 0xd03344 ],
+
+        wid :300,
+        height: 350,
+
         init : function(){
+            this.use_time[0] = 0;
+            this.use_time[1] = 0;
             console.log("game_id = " + this.game_id);
             for(var i=0;i<9;i++){
                 var row = [];
@@ -124,20 +136,18 @@
         },
 
         show : function(){
-            var wid = 300;
-            var height = 350;
             // line
             var start = [];
             var end = []; 
             var color = 0x00ff00;
             var mul = 1.0;
             for(var i=0; i<10; i++){
-                start = [wid*mul*(i - 4.5), 0 , height * mul * (- 4.5)];
-                end =   [wid*mul*(i - 4.5), 0 , height * mul *(4.5)]; 
-                createLinePoints(start, end, color, 300);
-                start = [wid * mul * (- 4.5), 0 , height * mul * (i - 4.5)];
-                end =   [wid * mul * (4.5), 0 , height * mul * (i - 4.5)]; 
-                createLinePoints(start, end, color, 300);
+                start = [this.wid*mul*(i - 4.5), 0 , this.height * mul * (- 4.5)];
+                end =   [this.wid*mul*(i - 4.5), 0 , this.height * mul *(4.5)]; 
+                createLinePoints(start, end, color, this.wid);
+                start = [this.wid * mul * (- 4.5), 0 , this.height * mul * (i - 4.5)];
+                end =   [this.wid * mul * (4.5), 0 , this.height * mul * (i - 4.5)]; 
+                createLinePoints(start, end, color, this.wid);
             }
 
             // koma
@@ -150,6 +160,7 @@
                     this._create_mesh(piece, [i, j]);
                 }
             }
+            drawTime();
         },
 
 
@@ -217,6 +228,13 @@
         },
 
         exec : function(){
+            // 時間
+            if(game_board.teban == 1){
+                game_board.use_time[0] += 1;
+            }else{
+                game_board.use_time[1] += 1;
+            }
+            drawTime(game_board.use_time[0], game_board.use_time[1]);
             var url = '../api/game/' + (game_board.game_id) + '/game_record/show/' + (game_board.epoch + 1) + '/' +  (game_board.epoch + 1);
             console.log(url );
             $.ajax({
@@ -249,9 +267,8 @@
         },
 
         _set_mesh : function(mesh, target, end_point){
-            var wid = 300;
-            var height = 350;
-            var pos = [wid * (end_point[1] - 4), 40, height * (end_point[0] - 4)];
+          
+            var pos = [this.wid * (end_point[1] - 4), 40, this.height * (end_point[0] - 4)];
             var rot = [Math.PI/2 ,0, Math.PI/20000];
             if(target > 0){
                 rot[2] = Math.PI;
@@ -356,10 +373,14 @@
     var fontSize = 18;
     var fontName ="'ヒラギノ角ゴ Pro W3', 'Hiragino Kaku Gothic Pro', 'メイリオ', Meiryo, Osaka, 'ＭＳ Ｐゴシック', 'MS PGothic'";
 
-    var width = 1920;
-    var height = 1080;
+     var windowSize = getWindowSize();
+           
+    var width = windowSize[0]; //1920;
+    var height = windowSize[1];  //1080;
 
     var table;
+
+    var time_mesh;
 
     var scene,renderer,camera,controls;
 
@@ -397,15 +418,18 @@
         document.getElementById('stage').appendChild(renderer.domElement);
 
         // camera
-        camera = new THREE.PerspectiveCamera(100, width / height, 10, 10000);
-        camera.position.set(50,-50,500);
+        camera = new THREE.PerspectiveCamera(90, width / height, 1, 20000);
+  //      camera.position.set(50,-50,500);
+        camera.position.set(50,1800,880);
+        camera.rotation.x = -1.2;
 
         // light
         setLight(scene);
 
         // control
-        controls = new THREE.OrbitControls(camera, renderer.domElement);
-
+        if(is_orbit_control){
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+        }
         // render
         generateLogo(str,fontSize)
     }
@@ -419,7 +443,7 @@
         render();
     }
 
-    function createLinePoints(start, end, color, div = 100){
+    function createLinePoints(start, end, color, div = 300){
         var vect = [end[0] -start[0], end[1] -start[1], end[2] -start[2]];
         var geometry = new THREE.Geometry();
         for(var i=0; i<div; i++){
@@ -434,17 +458,69 @@
         var geometry = new THREE.Geometry();
         table.reverse();
         var cnt = 0;
+        var point_pos = [[0,0,0], [7,0,0], [0,5,0], [6,6,0],[1,1,-5], [5,0,0], [0,7,0], [5,8,-5]   ];
         table.forEach(function(row,rowIndex) {
             row.forEach(function(cell,colIndex) {
                 if (cell === 1){
-                    geometry.vertices[ cnt ] = new THREE.Vector3(calcPosition(row,colIndex), calcPosition(table,rowIndex), 0);
-                    cnt ++;
+                    for(var i=0; i<point_pos.length; i++){ 
+                        geometry.vertices[ cnt ] = new THREE.Vector3(calcPosition(row,colIndex) + point_pos[i][0], calcPosition(table,rowIndex) + point_pos[i][1], point_pos[i][2]);
+                        cnt ++;
+                    }
                 }
             })
         })
         var mesh = new THREE.Points( geometry, new THREE.PointsMaterial( { size: 3, color: color } ) );
         scene.add(mesh);
         return mesh;
+    }
+
+    function drawTime(time1 = 12, time2 = 60*60*2 + 60*3 + 54){
+        var hour1 = Math.floor(time1/60/60);
+        var min1 = Math.floor(time1/60)%60;
+        var sec1 = time1%60;
+
+        var hour2 = Math.floor(time2/60/60);
+        var min2 = Math.floor(time2/60)%60;
+        var sec2 = time2%60;
+
+        var time = _zero_padding_str(hour2) + ":" + _zero_padding_str(min2) + ":" + _zero_padding_str(sec2); 
+        time += "       " + _zero_padding_str(hour1) + ":" + _zero_padding_str(min1) + ":" + _zero_padding_str(sec1); 
+
+        var color = 0x44ff99;
+        var table = getAsciiBlocks(time,fontSize);
+         table.reverse();
+        var geometry = new THREE.Geometry();
+        var cnt = 0;
+        var point_pos = [[0,0,0], [7,0,0], [0,5,0], [6,6,0],[1,1,-5], [5,0,0], [0,7,0], [5,8,-5]   ];
+        table.forEach(function(row,rowIndex) {
+            row.forEach(function(cell,colIndex) {
+                if (cell === 1){
+                    for(var i=0; i<point_pos.length; i++){ 
+                        geometry.vertices[ cnt ] = new THREE.Vector3(calcPosition(row,colIndex) + point_pos[i][0], calcPosition(table,rowIndex) + point_pos[i][1], point_pos[i][2]);
+                        cnt ++;
+                    }
+                }
+            })
+        })
+        var mesh = new THREE.Points( geometry, new THREE.PointsMaterial( { size: 3, color: color } ) );
+        mesh.position.set(50, 300, -2000);
+        mesh.rotation.set(0, 0 ,0);
+        deleteMesh(time_mesh);
+        scene.add(mesh);
+        time_mesh = mesh;
+    } 
+
+    function _zero_padding_str(num, digit = 2){
+        return String((_multi_string("0", digit) + num).slice(-digit))
+    }
+
+    function _multi_string(str, num){
+        var 
+        ret = "";
+        for(var i=0; i<num; i++){
+            ret += str;
+        }
+        return ret;
     }
 
     function setMesh(mesh, pos, rot){
@@ -475,10 +551,22 @@
     }
 
     function render() {
+        var windowSize = getWindowSize();   
+        width = windowSize[0]; //1920;
+        height = windowSize[1];  //1080;
+
+        renderer.setSize(width, height);
+        
         requestAnimationFrame(render);
-        camera.rotation.set(compassdir.x, compassdir.y, compassdir.z)
+        if(is_use_compass){
+            camera.rotation.set(compassdir.x, compassdir.y, compassdir.z)
+            camera.position.x = 50 + compassdir.y*3000;
+            camera.position.z = 700 + (compassdir.x + 1.2)* 3000;//      compassdir.x = -1.3 +event.beta * k;
+        }
         renderer.render(scene, camera);
-        controls.update();
+        if(is_orbit_control){
+            controls.update();
+        }
     }
 
     function getAsciiBlocks(str,fontSize,fontName) {
@@ -528,6 +616,7 @@
 
 </script>
 <body>
+    <div class="com_value"></div>
     <div id="stage"></div>
 </body>
 </html>

@@ -42,3 +42,10 @@ var _ua = (function(u){
   }
 })(window.navigator.userAgent.toLowerCase());
 
+function getWindowSize() {
+	var sW,sH,s;
+	sW = window.innerWidth;
+	sH = window.innerHeight;
+
+	return [sW, sH]
+}
